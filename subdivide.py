@@ -1,5 +1,6 @@
 import numpy as np
 from stl import mesh
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D, art3d 
 from copy import deepcopy
@@ -55,10 +56,17 @@ def divide_and_subdivide_sections(stl_mesh, center, delta, threshold):
             subdivisions[section_key] = [[], delta]
 
     # Populate subdivisions with vertices
+    # log the r, phi, theta of each vertex in the corresponding section
+    r_ls = []
+    phi_ls = []
+    theta_ls = []
     for triangle in stl_mesh.vectors:
         for vertex in triangle:
             shifted_vertex = vertex - center
             r, phi, theta = cartesian_to_spherical(*shifted_vertex)
+            r_ls.append(r)
+            phi_ls.append(phi)
+            theta_ls.append(theta)
 
             phi_section = phi // delta
             theta_section = (theta + np.pi) // delta  # Adjust theta to be in the range [0, 2π]
@@ -66,6 +74,27 @@ def divide_and_subdivide_sections(stl_mesh, center, delta, threshold):
             section_key = (phi_section, theta_section)
             subdivisions[section_key][0].append((r, phi, theta))
             # print(f"Vertex assigned: {shifted_vertex} -> Section: {section_key}")
+
+    # plot r, phi, theta in 3d
+    # convert to cartesian
+    x_ls = []
+    y_ls = []
+    z_ls = []
+
+    for r, phi, theta in zip(r_ls, phi_ls, theta_ls):
+        x, y, z = r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), r * np.cos(phi)
+        x_ls.append(x)
+        y_ls.append(y)
+        z_ls.append(z)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(x_ls, y_ls, z_ls)
+    ax.set_xlabel('$x$')
+    ax.set_ylabel('$y$')
+    ax.set_zlabel('$z$')
+    plt.show()
+ 
 
     # Now, subdivide sections based on the threshold
     final_subdivisions = {}
