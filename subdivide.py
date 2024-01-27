@@ -4,17 +4,40 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D, art3d 
 from copy import deepcopy
+import os
 
-### ------------------ read file and transform ------------------ ###
+### ------------------ read file/convert from mesh to ar ------------------ ###
 def read_stl(file_path):
     # Read STL file
     file = mesh.Mesh.from_file(file_path)
     # print(file.vectors)
     return file
 
-def find_bounding_box(stl_mesh):
+def convert_stl_to_ar(stl_mesh):
+    '''Convert an stl mesh to an array'''
+    # convert to stl format
+    points = []
+    for triangle in stl_mesh.vectors:
+        for vertex in triangle:
+            x = vertex[0]
+            y = vertex[1]
+            z = vertex[2]
+            points.append([x,y,z])
+
+    # convert to array
+    points = np.array(points)
+    return points
+
+## --------- bouding box and center --------- ##
+
+def find_bounding_box_stl(stl_mesh):
     min_coords = np.min(stl_mesh.vectors.reshape(-1, 3), axis=0)
     max_coords = np.max(stl_mesh.vectors.reshape(-1, 3), axis=0)
+    return min_coords, max_coords
+
+def find_bounding_box_ar(array):
+    min_coords = np.min(array, axis=0)
+    max_coords = np.max(array, axis=0)
     return min_coords, max_coords
 
 def find_center(bounding_box):
@@ -22,7 +45,7 @@ def find_center(bounding_box):
     center = (min_coords + max_coords) / 2
     return center
 
-def transform_to_cube(stl_mesh, bounding_box):
+def transform_to_cube_stl(stl_mesh, bounding_box):
     min_coords, max_coords = bounding_box
     lengths = max_coords - min_coords
 
@@ -43,8 +66,27 @@ def transform_to_cube(stl_mesh, bounding_box):
 
     return stl_mesh, scaling_matrix
 
+def transform_to_cube_ar(array, bounding_box):
+    min_coords, max_coords = bounding_box
+    lengths = max_coords - min_coords
+
+    # Target length is the maximum length among x, y, z dimensions
+    target_length = np.max(lengths)
+
+    # Scale factors for each axis
+    scale_factors = target_length / lengths
+
+    # Create scaling matrix
+    scaling_matrix = np.diag(scale_factors)
+
+    # Apply the scaling transformation to each vertex
+    for i in range(len(array)):
+        array[i] = np.dot(scaling_matrix, array[i])
+
+    return array, scaling_matrix
+
 ### ------------------ subdivide ------------------ ###
-def divide_and_subdivide_sections(stl_mesh, center, delta, threshold):
+def divide_and_subdivide_sections_stl(stl_mesh, center, delta, threshold, plot_intermediate=False, savename=None):
     subdivisions = {}
     num_phi_sections = int(np.pi / delta) + 1
     num_theta_sections = int(2 * np.pi / delta) + 1
@@ -75,26 +117,96 @@ def divide_and_subdivide_sections(stl_mesh, center, delta, threshold):
             subdivisions[section_key][0].append((r, phi, theta))
             # print(f"Vertex assigned: {shifted_vertex} -> Section: {section_key}")
 
-    # plot r, phi, theta in 3d
-    # convert to cartesian
-    x_ls = []
-    y_ls = []
-    z_ls = []
+    if plot_intermediate:
+        # plot r, phi, theta in 3d
+        # convert to cartesian
+        x_ls = []
+        y_ls = []
+        z_ls = []
 
-    for r, phi, theta in zip(r_ls, phi_ls, theta_ls):
-        x, y, z = r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), r * np.cos(phi)
-        x_ls.append(x)
-        y_ls.append(y)
-        z_ls.append(z)
+        for r, phi, theta in zip(r_ls, phi_ls, theta_ls):
+            x, y, z = r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), r * np.cos(phi)
+            x_ls.append(x)
+            y_ls.append(y)
+            z_ls.append(z)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(x_ls, y_ls, z_ls)
-    ax.set_xlabel('$x$')
-    ax.set_ylabel('$y$')
-    ax.set_zlabel('$z$')
-    plt.show()
- 
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(x_ls, y_ls, z_ls)
+        ax.set_xlabel('$x$')
+        ax.set_ylabel('$y$')
+        ax.set_zlabel('$z$')
+        if savename is not None:
+            # add to 'figures' folder
+            if not os.path.exists('figures'):
+                os.makedirs('figures')
+            plt.savefig(os.path.join('figures', savename+'_intermediate.png'))
+        plt.show()
+    
+    # Now, subdivide sections based on the threshold
+    final_subdivisions = {}
+    for section_key, vectors in subdivisions.items():
+        # print([vertex[0] for vertex in vertices])
+        subdivided = subdivide_section(section_key, vectors, threshold)
+        final_subdivisions.update(subdivided)
+
+    return final_subdivisions
+
+def divide_and_subdivide_sections_ar(array, center, delta, threshold, plot_intermediate=False, savename=None):
+    subdivisions = {}
+    num_phi_sections = int(np.pi / delta) + 1
+    num_theta_sections = int(2 * np.pi / delta) + 1
+
+    # Initialize subdivisions
+    for phi_index in range(num_phi_sections):
+        for theta_index in range(num_theta_sections):
+            section_key = (phi_index, theta_index)
+            subdivisions[section_key] = [[], delta]
+
+    # Populate subdivisions with vertices
+    # log the r, phi, theta of each vertex in the corresponding section
+    r_ls = []
+    phi_ls = []
+    theta_ls = []
+    for vertex in array:
+        shifted_vertex = vertex - center
+        r, phi, theta = cartesian_to_spherical(*shifted_vertex)
+        r_ls.append(r)
+        phi_ls.append(phi)
+        theta_ls.append(theta)
+
+        phi_section = phi // delta
+        theta_section = (theta + np.pi) // delta
+
+        section_key = (phi_section, theta_section)
+        subdivisions[section_key][0].append((r, phi, theta))
+        # print(f"Vertex assigned: {shifted_vertex} -> Section: {section_key}")
+
+    if plot_intermediate:
+        # plot r, phi, theta in 3d
+        # convert to cartesian
+        x_ls = []
+        y_ls = []
+        z_ls = []
+
+        for r, phi, theta in zip(r_ls, phi_ls, theta_ls):
+            x, y, z = r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), r * np.cos(phi)
+            x_ls.append(x)
+            y_ls.append(y)
+            z_ls.append(z)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(x_ls, y_ls, z_ls)
+        ax.set_xlabel('$x$')
+        ax.set_ylabel('$y$')
+        ax.set_zlabel('$z$')
+        if savename is not None:
+            # add to 'figures' folder
+            if not os.path.exists('figures'):
+                os.makedirs('figures')
+            plt.savefig(os.path.join('figures', savename+'_intermediate.png'))
+        plt.show()
 
     # Now, subdivide sections based on the threshold
     final_subdivisions = {}
@@ -105,11 +217,18 @@ def divide_and_subdivide_sections(stl_mesh, center, delta, threshold):
 
     return final_subdivisions
 
+
 def cartesian_to_spherical(x, y, z):
     r = np.sqrt(x**2 + y**2 + z**2)
     phi = np.arccos(z / r)  # Inclination
     theta = np.arctan2(y, x)  # Azimuth
     return r, phi, theta
+
+def spherical_to_cartesian(r, phi, theta):
+    x = r * np.sin(phi) * np.cos(theta)
+    y = r * np.sin(phi) * np.sin(theta)
+    z = r * np.cos(phi)
+    return x, y, z
 
 def subdivide_section(section_key, vectors,threshold):
     vertices = deepcopy(vectors[0])
@@ -196,13 +315,10 @@ def calculate_centroid_of_section(section_key, division_dict):
         print(f"Section {section_key} has no points.")
         return None, None
 
-def plot_subdivisions(subdivisions):
+def plot_subdivisions(subdivisions, savename=None):
     phi_values = []
     theta_values = []
     radii_values = []
-
-    plt.figure(figsize=(10, 6))
-    ax = plt.gca()
 
     for section_key, vectors in subdivisions.items():
         if len(subdivisions[section_key]) > 0:
@@ -218,40 +334,131 @@ def plot_subdivisions(subdivisions):
     if not phi_values or not theta_values:
         print("No data to plot.")
         return
+    
+    radii_values = np.array(radii_values)
+    phi_values = np.array(phi_values)
+    theta_values = np.array(theta_values)
+    
+    # Convert spherical coordinates to Cartesian coordinates for the 3D plot
+    x, y, z = spherical_to_cartesian(radii_values, phi_values, theta_values)
 
-    scatter = ax.scatter(theta_values, phi_values, s=50, c=radii_values, cmap='viridis')
-    plt.colorbar(scatter, ax=ax, label='Mean Radius')
-    ax.set_xlabel('Theta (degrees)')
-    ax.set_ylabel('Phi (degrees)')
-    ax.set_title('Centroids of Subdivisions with Radii Values')
-    ax.set_xlim(0, 360)
-    ax.set_ylim(0, 180)
+    # Create a figure with two subplots
+    fig = plt.figure(figsize=(15, 6))
+
+    # First subplot (original 2D scatter plot)
+    ax1 = fig.add_subplot(121)
+    scatter = ax1.scatter(theta_values, phi_values, s=50, c=radii_values, cmap='viridis')
+    plt.colorbar(scatter, ax=ax1, label='Mean Radius')
+    ax1.set_xlabel('Theta (degrees)')
+    ax1.set_ylabel('Phi (degrees)')
+    ax1.set_title('Centroids of Subdivisions with Radii Values')
+    ax1.set_xlim(0, 360)
+    ax1.set_ylim(0, 180)
+
+    # Second subplot (3D plot)
+    ax2 = fig.add_subplot(122, projection='3d')
+    scatter3d = ax2.scatter(x, y, z, c=radii_values, cmap='viridis')
+    plt.colorbar(scatter3d, ax=ax2, label='Mean Radius')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Y')
+    ax2.set_zlabel('Z')
+    ax2.set_title('3D Plot in Polar Coordinates')
+
+    if savename is not None:
+            # add to 'figures' folder
+            if not os.path.exists('figures'):
+                os.makedirs('figures')
+            plt.savefig(os.path.join('figures', savename+'_result.png'))
 
     plt.show()
 
-if __name__ == '__main__':
-    file_path = "shapewithbox.stl"
 
-    threshold = 0.001
-    delta = np.deg2rad(30)
+## ------------------ main ------------------ ##
+def main_subdivision_stl(file_path=None, stl_file=None, threshold=1e-3, delta=30, plot_intermediate=False):
+    '''
+    * `read_stl` loads the mesh
+    * `find_bounding box` draws a rectangular prism around the mesh
+    * `find_center` computes the center of the box
+    * `transform_to_cube_stl` performs linear transformation to make box uniform
+    * recall `bounding_box` and `find_center` to get the new bounding box box and center
+    * `divide_and_subdivide_sections` performs the slicing first based on an initial array of phi, theta. in particular, we go through each triangle in the mesh, each point in the triangle, compute the r, phi, theta vals, and see which of the theta, phi bins they fall into. if `plot_intermediate` is called, will output what the r, phi, theta looks like. then, calls subdivide_section to recursively divide each of the main sections into smaller ones by finding the std deviation of the radii from the center, which we want to be <= a certain threshold (by default 1e-3)
+    * `plot_subdivisions` to see the results in phi, theta space colored by radius, as well as a 3D plot
+    '''
+    if stl_file is not None and file_path is None:
+        print('Using stl_file')
+        stl_mesh = stl_file
 
-    print("Reading STL file...")
-    stl_mesh = read_stl(file_path)
+    elif file_path is not None and stl_file is None:
+        print("Reading STL file...")
+        stl_mesh = read_stl(file_path)
+
+    else:
+        raise ValueError('Must provide either file_path or stl_file')
+
+    delta = np.deg2rad(delta)
 
     print("Finding bounding box...")
-    bounding_box = find_bounding_box(stl_mesh)
+    bounding_box = find_bounding_box_stl(stl_mesh)
 
 
     print("Transforming to cube...")
-    transformed_mesh, scaling_matrix = transform_to_cube(stl_mesh, bounding_box)
+    transformed_mesh, scaling_matrix = transform_to_cube_stl(stl_mesh, bounding_box)
 
 
     print("Finding center of revised box...")
-    new_bounding_box = find_bounding_box(transformed_mesh)
+    new_bounding_box = find_bounding_box_stl(transformed_mesh)
     center = find_center(new_bounding_box)
 
     print("Dividing and subdividing sections...")
-    final_subdivisions = divide_and_subdivide_sections(transformed_mesh, center, delta, threshold)
+    final_subdivisions = divide_and_subdivide_sections_stl(transformed_mesh, center, delta, threshold, plot_intermediate=plot_intermediate)
 
     # Plot the subdivisions
     plot_subdivisions(final_subdivisions)
+
+def main_subdivision_ar(file_path =None, array = None, threshold=1e-3, delta=30, plot_intermediate=False, savename=None):
+    '''
+    * `read_stl` loads the mesh
+    * `find_bounding box` draws a rectangular prism around the mesh
+    * `find_center` computes the center of the box
+    * `transform_to_cube_stl` performs linear transformation to make box uniform
+    * recall `bounding_box` and `find_center` to get the new bounding box box and center
+    * `divide_and_subdivide_sections` performs the slicing first based on an initial array of phi, theta. in particular, we go through each triangle in the mesh, each point in the triangle, compute the r, phi, theta vals, and see which of the theta, phi bins they fall into. if `plot_intermediate` is called, will output what the r, phi, theta looks like. then, calls subdivide_section to recursively divide each of the main sections into smaller ones by finding the std deviation of the radii from the center, which we want to be <= a certain threshold (by default 1e-3)
+    * `plot_subdivisions` to see the results in phi, theta space colored by radius, as well as a 3D plot
+    '''
+
+    if array is not None and file_path is None:
+        print('Using array')
+        array = array
+
+    elif file_path is not None and array is None:
+        print("Reading STL file...")
+        array = read_stl(file_path).vectors.reshape(-1, 3)
+
+    else:
+        raise ValueError('Must provide either file_path or array')
+
+    delta = np.deg2rad(delta)
+
+    print("Finding bounding box...")
+    bounding_box = find_bounding_box_ar(array)
+
+
+    print("Transforming to cube...")
+    transformed_mesh, scaling_matrix = transform_to_cube_ar(array, bounding_box)
+
+
+    print("Finding center of revised box...")
+    new_bounding_box = find_bounding_box_ar(transformed_mesh)
+    center = find_center(new_bounding_box)
+
+    print("Dividing and subdividing sections...")
+    final_subdivisions = divide_and_subdivide_sections_ar(transformed_mesh, center, delta, threshold, plot_intermediate=plot_intermediate, savename=savename)
+
+    # Plot the subdivisions
+    plot_subdivisions(final_subdivisions, savename=savename)
+
+if __name__ == '__main__':
+    file_path = "shapewithbox.stl"
+    main_subdivision_stl(file_path)
+
+   
