@@ -3,6 +3,9 @@ Larry Liu's code for Prof. Gu's research.
 
 # Updates:
 
+## 1/30/24
+- added ```plot_stl_sparse_random``` to sample random perturbed data around a mesh
+
 ## 1/26/24
 - extending subdivide.py's divide_and_subdivide_sections to general numpy arrays of observations (just np arrays)
     * specifically, renamed main_subdivision() -> main_subdivision_stl() and main_subdivision_ar()
