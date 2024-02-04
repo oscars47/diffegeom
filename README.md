@@ -3,6 +3,14 @@ Larry Liu's code for Prof. Gu's research.
 
 # Updates:
 
+## 2/3/24
+- discovered the PCL library for C++: https://github.com/PointCloudLibrary/pcl. the function bspline_fitting does everything we want by mapping a point cloud to B-splines so the surface is differentiable.
+- realized this C++ code was dogwater because it was made for version 7 and current is 11 so used open3d in python instead. wrote poisson.py to implement poisson reconstruction (since no native support for b-splines here). 
+* ```poisson_reconstruct_stlfile(file)``` implements the algorithm for arbitrary mesh file
+
+## 2/2/24
+- fixed line 104 of subdivide.py so the transformed cube has length 1
+
 ## 1/30/24
 - added ```plot_stl_sparse_random``` to sample random perturbed data around a mesh
 
