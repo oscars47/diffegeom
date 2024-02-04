@@ -1,5 +1,5 @@
 # diffegeom
-Larry Liu's code for Prof. Gu's research.
+Larry Liu and Oscar Scholin's code for Prof. Gu's research.
 
 # Updates:
 
