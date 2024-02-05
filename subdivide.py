@@ -13,7 +13,7 @@ def read_stl(file_path):
     # print(file.vectors)
     return file
 
-def convert_stl_to_ar(stl_mesh):
+def stl_to_ar(stl_mesh):
     '''Convert an stl mesh to an array'''
     # convert to stl format
     points = []
@@ -27,6 +27,31 @@ def convert_stl_to_ar(stl_mesh):
     # convert to array
     points = np.array(points)
     return points
+
+def select_random_ar(array, num):
+    '''Select a random subset of points from an array'''
+    indices = np.random.choice(range(len(array)), num, replace=False)
+    return array[indices]
+
+def add_noise_ar(array, temperature=0.1):
+    '''Add noise to an array of points'''
+    x = array[:, 0] + np.random.normal(0, temperature, len(array))
+    y = array[:, 1] + np.random.normal(0, temperature, len(array))
+    z = array[:, 2] + np.random.normal(0, temperature, len(array))
+    return np.array([x, y, z]).T
+
+def plot_stl_sparse_random(stl_file, num_points=1000, temperature=0.1, savename=None, plot_intermediate=False):
+    '''Combines read_stl, stl_to_ar, select_random_ar, and add_noise_ar to plot a sparse, random subset of an stl file'''
+    # Read the file
+    stl_mesh = read_stl(stl_file)
+    # Convert to an array
+    array = stl_to_ar(stl_mesh)
+    # Select a random subset of points
+    array = select_random_ar(array, num_points)
+    # Add noise
+    array = add_noise_ar(array, temperature)
+
+    main_subdivision_ar(array=array, threshold=1e-3, delta=30, plot_intermediate=plot_intermediate, savename=savename)
 
 ## --------- bouding box and center --------- ##
 
@@ -132,7 +157,7 @@ def divide_and_subdivide_sections_stl(stl_mesh, center, delta, threshold, plot_i
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(x_ls, y_ls, z_ls)
+        ax.scatter(x_ls, y_ls, z_ls, s=1)
         ax.set_xlabel('$x$')
         ax.set_ylabel('$y$')
         ax.set_zlabel('$z$')
@@ -197,7 +222,7 @@ def divide_and_subdivide_sections_ar(array, center, delta, threshold, plot_inter
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(x_ls, y_ls, z_ls)
+        ax.scatter(x_ls, y_ls, z_ls, s=1)
         ax.set_xlabel('$x$')
         ax.set_ylabel('$y$')
         ax.set_zlabel('$z$')
@@ -325,8 +350,10 @@ def plot_subdivisions(subdivisions, savename=None):
             centroid_phi, centroid_theta = calculate_centroid_of_section(section_key, subdivisions)
             mean_radii = np.mean([r for r, phi, theta in vectors[0]])
 
-            phi_values.append(np.rad2deg(centroid_phi))
-            theta_values.append(np.rad2deg(centroid_theta))
+            # phi_values.append(np.rad2deg(centroid_phi))
+            phi_values.append(centroid_phi)
+            # theta_values.append(np.rad2deg(centroid_theta))
+            theta_values.append(centroid_theta)
             radii_values.append(mean_radii)
         else:
             print(f"Section {section_key} has no points.")
@@ -347,13 +374,13 @@ def plot_subdivisions(subdivisions, savename=None):
 
     # First subplot (original 2D scatter plot)
     ax1 = fig.add_subplot(121)
-    scatter = ax1.scatter(theta_values, phi_values, s=50, c=radii_values, cmap='viridis')
+    scatter = ax1.scatter(theta_values, phi_values, s=1, marker='o', c=radii_values, cmap='viridis')
     plt.colorbar(scatter, ax=ax1, label='Mean Radius')
     ax1.set_xlabel('Theta (degrees)')
     ax1.set_ylabel('Phi (degrees)')
     ax1.set_title('Centroids of Subdivisions with Radii Values')
-    ax1.set_xlim(0, 360)
-    ax1.set_ylim(0, 180)
+    ax1.set_xlim(0, 2*np.pi)
+    ax1.set_ylim(0, np.pi)
 
     # Second subplot (3D plot)
     ax2 = fig.add_subplot(122, projection='3d')
